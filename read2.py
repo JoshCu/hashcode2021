@@ -1,10 +1,8 @@
-import collections
 from types import SimpleNamespace
 
 
 def reader(fname):
     streets = {}
-    new_streets = {}
     cars = []
     info = {}
     with open(fname) as f:
@@ -24,13 +22,9 @@ def reader(fname):
         #  P(num of streets to travel) P*string(road names)
         for _ in range(info['V']):
             line = f.readline()
-            tokens = line.split()[1:]
-            cars.append(Car(tokens))
-            for s in tokens:
-                if s not in new_streets:
-                    new_streets[s] = streets[s]
+            cars.append(Car(line.split()[1:]))
 
-    return new_streets, cars, info
+    return streets, cars, info
 
 # intersection is a collection of streets
 
@@ -55,49 +49,26 @@ class Intersection():
         self.in_streets = in_streets
         self.ID = ID
         self.now = 0
-
+        self.schedule = self.simple_schedule()
         self._sched_loc = 0
 
     def turn_green(self, target_street, time):
         target_street.traffic_green = True
 
     def simple_schedule(self):
-
         return [(1, street) for street in self.in_streets]
 
-    def popular_intersection_schedule(self, popularity, time_limit):
+    def popular_intersection_schedule():
         """
-        Prioritises most common intersections
+        Most popular roads have the longest green light time
         """
-        # sorted_popularity = [x for x in sorted(popularity, key=popularity.get, reverse=True)]
-        pop_values = popularity.values()
-        total = sum(pop_values)
-        max_val = max(pop_values)
-        min_val = min(pop_values)
-        results = []
-        for street_obj in self.in_streets:
-            # for street, value in popularity.items():
-            #    for s in self.in_streets:
-            #        if street == s.name:
-            #            obj = s
-            #            break
-            #    else:
-            #        continue
-            # print("Calculating duration for in_street", street_obj.name)
-
-            duration = int(time_limit*0.005 * (popularity[street_obj.name] - min_val) / (max_val - min_val))
-            if duration <= 1:
-                duration = 1
-            results.append((duration, street_obj))
-            # print(duration, street_obj.name)
-        return results
 
     def shortest_street_schedule(self):
         """
         Prioritise shorter streets.
         """
-        shortest_first = sorted(self.in_streets, key=lambda s: -s.duration)
-        return [(i, s) for i, s in enumerate(shortest_first)]
+        shortest_first = sorted(self.in_streets, key=lambda s: s.duration)
+        return [(i+1, s) for i, s in enumerate(shortest_first)]
 
     def update_time(self):
         """
@@ -111,7 +82,7 @@ class Intersection():
         self.now += 1
 
     def output(self):
-        output = [str(self.ID), str(len(self.schedule))]
+        output = [str(self.ID), str(len(self.in_streets))]
         for duration, street in self.schedule:
             output.append(f'{str(street.name)} {str(duration)}')
         output = "\n".join(output)
@@ -129,12 +100,15 @@ class Street:
         self.name = name
         self.traffic_green = False
 
-    def add_car(self, car):
+    def add_car(self, car, skip=False):
         """
         Add a car to the driving list with a delay.
         """
         car.route.pop(0)  # Remove first street in cars route
-        self.driving.append([self.duration + self.now, car])
+        if skip:
+            self.driving.append([0, car])
+        else:
+            self.driving.append([self.duration + self.now, car])
 
     def update_time(self):
         """
@@ -144,18 +118,26 @@ class Street:
          - Next car through the lights!
         """
         skip = 0
+        finished = None
+        thru = None
         for i, d in enumerate(self.driving):
             if d[0] == self.now:
-                self.waiting.append(d[1])
+                if d[1].route:
+                    self.waiting.append(d[1])
+                else:
+                    finished = d[1]
             else:
                 skip = i
+                break
+
         self.driving = self.driving[skip:]
 
         if self.traffic_green and self.waiting:
-            return self.waiting.pop(0)
+            thru = self.waiting.pop(0)
         self.now += 1
 
-        return None
+        print(self.name, thru, finished)
+        return thru, finished  # Thru lights, gets points
 
 
 class Car:
@@ -166,20 +148,15 @@ class Car:
         self.route = route
 
 
-def get_intersections(streets, cars, info):
+def get_intersections(streets):
     intersections = {}
     for street in streets.values():
         if street.end not in intersections:
             intersections[street.end] = Intersection([street], street.end)
         else:
             intersections[street.end].in_streets.append(street)
-    from collections import Counter
-    max_route = max([len(c.route) for c in cars])
-    popularity = Counter([r for car in cars for r in car.route if len(car.route) < 0.75*max_route])
-    #popularity = Counter([r for car in cars for r in car.route])
     for intersection in intersections.values():
-        # intersection.schedule = intersection.simple_schedule()
-        intersection.schedule = intersection.popular_intersection_schedule(popularity, info['D'])
+        intersection.schedule = intersection.simple_schedule()
     return intersections
 
 
@@ -190,33 +167,35 @@ def run_simulation(fname):
     intersections = get_intersections(streets)
     # Puts cars into start positions
     for car in cars:
-        streets[car.route[0]].add_car(car)
+        streets[car.route[0]].add_car(car, True)
 
     for T in range(info['D']):
-
+        print(T)
         moved_cars = []
-        #
+        finished_cars = []
+        for car in cars:
+            print(car.route)
         for intersection in intersections.values():
             intersection.update_time()
         for street in streets.values():
-            next_car = street.update_time()
+            next_car, finished_car = street.update_time()
             if next_car is not None:
                 moved_cars.append(next_car)
+            if finished_car is not None:
+                finished_cars.append(finished_car)
         for car in moved_cars:
-            if len(car.route) == 0:
-                score += info['F'] + (info['D'] - T)
-            else:
-                streets[car.route[0]].add_car(car)
+            streets[car.route[0]].add_car(car)
+        for car in finished_cars:
+            print('Yay')
+            score += info['F'] + (info['D'] - T)
 
     return score
 
 
 def generate_output(fname):
-    print(f"Generating output for {fname}...")
     streets, cars, info = reader(fname)
-    intersections = get_intersections(streets, cars, info)
-    writer(intersections, fname+'.out-help')
-    print(f"Finished output for {fname}.")
+    intersections = get_intersections(streets)
+    writer(intersections, fname+'.out')
 
 
 if __name__ == "__main__":
@@ -224,5 +203,6 @@ if __name__ == "__main__":
     # generate_output('b.txt')
     # generate_output('c.txt')
     # generate_output('d.txt')
-    generate_output('e.txt')
-    generate_output('f.txt')
+    # generate_output('e.txt')
+    # generate_output('f.txt')
+    print(run_simulation('a.txt'))

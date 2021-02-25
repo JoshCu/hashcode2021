@@ -62,19 +62,20 @@ class Intersection():
         target_street.traffic_green = True
 
     def simple_schedule(self):
+        return [(2, street) for street in self.in_streets]
 
-        return [(1, street) for street in self.in_streets]
-
-    def popular_intersection_schedule(self, popularity, time_limit):
+    def popular_intersection_schedule(self, cars, time_limit):
         """
         Prioritises most common intersections
         """
-        # sorted_popularity = [x for x in sorted(popularity, key=popularity.get, reverse=True)]
-        pop_values = popularity.values()
-        total = sum(pop_values)
-        max_val = max(pop_values)
-        min_val = min(pop_values)
+        from collections import Counter
+        popularity = Counter([r for car in cars for r in car.route])
+        sorted_popularity = [x for x in sorted(popularity, key=popularity.get, reverse=True)]
+        total = sum(popularity.values())
+        max_val = max(popularity.values())
+        min_val = min(popularity.values())
         results = []
+
         for street_obj in self.in_streets:
             # for street, value in popularity.items():
             #    for s in self.in_streets:
@@ -83,13 +84,13 @@ class Intersection():
             #            break
             #    else:
             #        continue
-            # print("Calculating duration for in_street", street_obj.name)
+            #print("Calculating duration for in_street", street_obj.name)
 
-            duration = int(time_limit*0.005 * (popularity[street_obj.name] - min_val) / (max_val - min_val))
+            duration = int(time_limit*0.1 * (popularity[street_obj.name] - min_val) / (max_val - min_val))
             if duration <= 1:
                 duration = 1
             results.append((duration, street_obj))
-            # print(duration, street_obj.name)
+            #print(duration, street_obj.name)
         return results
 
     def shortest_street_schedule(self):
@@ -111,7 +112,7 @@ class Intersection():
         self.now += 1
 
     def output(self):
-        output = [str(self.ID), str(len(self.schedule))]
+        output = [str(self.ID), str(len(self.in_streets))]
         for duration, street in self.schedule:
             output.append(f'{str(street.name)} {str(duration)}')
         output = "\n".join(output)
@@ -173,13 +174,9 @@ def get_intersections(streets, cars, info):
             intersections[street.end] = Intersection([street], street.end)
         else:
             intersections[street.end].in_streets.append(street)
-    from collections import Counter
-    max_route = max([len(c.route) for c in cars])
-    popularity = Counter([r for car in cars for r in car.route if len(car.route) < 0.75*max_route])
-    #popularity = Counter([r for car in cars for r in car.route])
     for intersection in intersections.values():
-        # intersection.schedule = intersection.simple_schedule()
-        intersection.schedule = intersection.popular_intersection_schedule(popularity, info['D'])
+        intersection.schedule = intersection.simple_schedule()
+        #intersection.schedule = intersection.popular_intersection_schedule(cars, info['D'])
     return intersections
 
 
@@ -215,14 +212,14 @@ def generate_output(fname):
     print(f"Generating output for {fname}...")
     streets, cars, info = reader(fname)
     intersections = get_intersections(streets, cars, info)
-    writer(intersections, fname+'.out-help')
+    writer(intersections, fname+'.out(2)')
     print(f"Finished output for {fname}.")
 
 
 if __name__ == "__main__":
-    # generate_output('a.txt')
-    # generate_output('b.txt')
-    # generate_output('c.txt')
-    # generate_output('d.txt')
+    generate_output('a.txt')
+    generate_output('b.txt')
+    generate_output('c.txt')
+    generate_output('d.txt')
     generate_output('e.txt')
     generate_output('f.txt')
